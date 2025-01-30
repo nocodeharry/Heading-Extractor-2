@@ -182,15 +182,15 @@ def api_harvest_headings():
 
 def extract_headings(urls, heading_types=None):
     if isinstance(urls, str):
-        urls = [urls]  # Convert single URL to list
+        urls = [urls]
     
-    # Default heading types if none specified
     if not heading_types:
         heading_types = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']
     elif isinstance(heading_types, str):
-        heading_types = [heading_types]  # Convert single heading type to list
+        heading_types = [heading_types]
     
-    results = {}
+    extracted_data = []
+    
     for url in urls:
         try:
             headers = {'User-Agent': os.getenv('USER_AGENT', 'Mozilla/5.0')}
@@ -198,32 +198,34 @@ def extract_headings(urls, heading_types=None):
             response.raise_for_status()
             
             soup = BeautifulSoup(response.text, 'html.parser')
-            headings = []
+            url_data = {
+                "url": url,
+                "extracted_headings": []
+            }
             
             for tag in heading_types:
-                tag = tag.lower()  # Normalize heading type
+                tag = tag.lower()
                 if not tag.startswith('h'):
-                    tag = 'h' + tag  # Convert '1' to 'h1' if needed
+                    tag = 'h' + tag
                 
-                for heading in soup.find_all(tag):
-                    headings.append({
-                        'type': tag,
-                        'text': heading.get_text().strip(),
-                        'html': str(heading)  # Optional: include HTML content
-                    })
+                headings = soup.find_all(tag)
+                for heading in headings:
+                    clean_text = ' '.join(heading.get_text().strip().split())
+                    if clean_text:  # Only add non-empty headings
+                        url_data["extracted_headings"].append({
+                            "type": tag,
+                            "text": clean_text
+                        })
             
-            results[url] = {
-                'status': 'success',
-                'headings': headings,
-                'total_headings': len(headings)
-            }
+            extracted_data.append(url_data)
+            
         except Exception as e:
-            results[url] = {
-                'status': 'error',
-                'error': str(e)
-            }
+            extracted_data.append({
+                "url": url,
+                "error": str(e)
+            })
     
-    return results
+    return extracted_data
 
 @app.route('/extract', methods=['POST'])
 @require_api_key
@@ -231,22 +233,26 @@ def extract():
     try:
         data = request.get_json()
         urls = data.get('urls') or data.get('url')
-        heading_types = data.get('heading_types')  # Optional parameter
+        heading_types = data.get('heading_types')
         
         if not urls:
-            return jsonify({"error": "URLs are required"}), 400
+            return jsonify({
+                "status": "error",
+                "message": "URLs are required"
+            }), 400
             
         results = extract_headings(urls, heading_types)
+        
         return jsonify({
-            "results": results,
-            "metadata": {
-                "total_urls_processed": len(results),
-                "successful_extractions": sum(1 for r in results.values() if r.get('status') == 'success'),
-                "failed_extractions": sum(1 for r in results.values() if r.get('status') == 'error')
-            }
+            "status": "success",
+            "data": results
         })
+        
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
 
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 5000))
