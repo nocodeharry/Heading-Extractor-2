@@ -1,19 +1,11 @@
 services:
   - type: web
-    name: heading-harvester-api
+    name: heading-extractor
     env: python
     buildCommand: pip install -r requirements.txt
     startCommand: gunicorn harvester:app
     envVars:
       - key: PYTHON_VERSION
         value: 3.9.0
-      - key: PORT
-        value: 10000
-      - key: FLASK_ENV
-        value: production
-      - key: SECRET_KEY
-        generateValue: true
-      - key: API_TIMEOUT
-        value: 10
-      - key: USER_AGENT
-        value: Mozilla/5.0 
+      - key: API_KEY
+        sync: false
