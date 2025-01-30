@@ -5,6 +5,7 @@ from flask_cors import CORS
 import urllib3
 import os
 from dotenv import load_dotenv
+from functools import wraps
 
 # Load environment variables
 load_dotenv()
@@ -74,6 +75,15 @@ HTML_TEMPLATE = '''
 </body>
 </html>
 '''
+
+def require_api_key(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        api_key = request.headers.get('X-API-Key')
+        if api_key and api_key == os.getenv('API_KEY'):
+            return f(*args, **kwargs)
+        return jsonify({"error": "Invalid or missing API key"}), 401
+    return decorated
 
 @app.route('/')
 def home():
@@ -169,6 +179,21 @@ def api_harvest_headings():
             'error': str(e),
             'status': 'error'
         }), 500
+
+@app.route('/extract', methods=['POST'])
+@require_api_key
+def extract():
+    try:
+        data = request.get_json()
+        url = data.get('url')
+        
+        if not url:
+            return jsonify({"error": "URL is required"}), 400
+            
+        headings = extract_headings(url)
+        return jsonify({"headings": headings})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 5000))
