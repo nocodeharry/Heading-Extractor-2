@@ -180,9 +180,15 @@ def api_harvest_headings():
             'status': 'error'
         }), 500
 
-def extract_headings(urls):
+def extract_headings(urls, heading_types=None):
     if isinstance(urls, str):
         urls = [urls]  # Convert single URL to list
+    
+    # Default heading types if none specified
+    if not heading_types:
+        heading_types = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']
+    elif isinstance(heading_types, str):
+        heading_types = [heading_types]  # Convert single heading type to list
     
     results = {}
     for url in urls:
@@ -194,16 +200,22 @@ def extract_headings(urls):
             soup = BeautifulSoup(response.text, 'html.parser')
             headings = []
             
-            for tag in ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']:
+            for tag in heading_types:
+                tag = tag.lower()  # Normalize heading type
+                if not tag.startswith('h'):
+                    tag = 'h' + tag  # Convert '1' to 'h1' if needed
+                
                 for heading in soup.find_all(tag):
                     headings.append({
                         'type': tag,
-                        'text': heading.get_text().strip()
+                        'text': heading.get_text().strip(),
+                        'html': str(heading)  # Optional: include HTML content
                     })
             
             results[url] = {
                 'status': 'success',
-                'headings': headings
+                'headings': headings,
+                'total_headings': len(headings)
             }
         except Exception as e:
             results[url] = {
@@ -219,12 +231,20 @@ def extract():
     try:
         data = request.get_json()
         urls = data.get('urls') or data.get('url')
+        heading_types = data.get('heading_types')  # Optional parameter
         
         if not urls:
             return jsonify({"error": "URLs are required"}), 400
             
-        results = extract_headings(urls)
-        return jsonify({"results": results})
+        results = extract_headings(urls, heading_types)
+        return jsonify({
+            "results": results,
+            "metadata": {
+                "total_urls_processed": len(results),
+                "successful_extractions": sum(1 for r in results.values() if r.get('status') == 'success'),
+                "failed_extractions": sum(1 for r in results.values() if r.get('status') == 'error')
+            }
+        })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
