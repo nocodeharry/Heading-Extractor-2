@@ -180,40 +180,51 @@ def api_harvest_headings():
             'status': 'error'
         }), 500
 
-def extract_headings(url):
-    try:
-        headers = {'User-Agent': os.getenv('USER_AGENT', 'Mozilla/5.0')}
-        response = requests.get(url, headers=headers, timeout=int(os.getenv('API_TIMEOUT', 10)))
-        response.raise_for_status()
-        
-        soup = BeautifulSoup(response.text, 'html.parser')
-        headings = []
-        
-        for tag in ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']:
-            for heading in soup.find_all(tag):
-                headings.append({
-                    'type': tag,
-                    'text': heading.get_text().strip()
-                })
-        
-        return headings
-    except requests.RequestException as e:
-        raise Exception(f"Failed to fetch URL: {str(e)}")
-    except Exception as e:
-        raise Exception(f"Error extracting headings: {str(e)}")
+def extract_headings(urls):
+    if isinstance(urls, str):
+        urls = [urls]  # Convert single URL to list
+    
+    results = {}
+    for url in urls:
+        try:
+            headers = {'User-Agent': os.getenv('USER_AGENT', 'Mozilla/5.0')}
+            response = requests.get(url, headers=headers, timeout=int(os.getenv('API_TIMEOUT', 10)))
+            response.raise_for_status()
+            
+            soup = BeautifulSoup(response.text, 'html.parser')
+            headings = []
+            
+            for tag in ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']:
+                for heading in soup.find_all(tag):
+                    headings.append({
+                        'type': tag,
+                        'text': heading.get_text().strip()
+                    })
+            
+            results[url] = {
+                'status': 'success',
+                'headings': headings
+            }
+        except Exception as e:
+            results[url] = {
+                'status': 'error',
+                'error': str(e)
+            }
+    
+    return results
 
 @app.route('/extract', methods=['POST'])
 @require_api_key
 def extract():
     try:
         data = request.get_json()
-        url = data.get('url')
+        urls = data.get('urls') or data.get('url')
         
-        if not url:
-            return jsonify({"error": "URL is required"}), 400
+        if not urls:
+            return jsonify({"error": "URLs are required"}), 400
             
-        headings = extract_headings(url)
-        return jsonify({"headings": headings})
+        results = extract_headings(urls)
+        return jsonify({"results": results})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
