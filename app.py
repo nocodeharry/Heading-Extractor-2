@@ -4,11 +4,20 @@ from bs4 import BeautifulSoup
 from flask_cors import CORS
 import urllib3
 import os
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 app = Flask(__name__)
+app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'default-secret-key')
 CORS(app)
+
+# Get configuration from environment variables
+API_TIMEOUT = int(os.getenv('API_TIMEOUT', 10))
+USER_AGENT = os.getenv('USER_AGENT', 'Mozilla/5.0')
 
 HTML_TEMPLATE = '''
 <!DOCTYPE html>
@@ -109,5 +118,59 @@ def harvest_headings():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/harvest', methods=['POST'])
+def api_harvest_headings():
+    try:
+        urls = request.json.get('urls', [])
+        if not urls:
+            return jsonify({
+                'error': 'No URLs provided',
+                'status': 'error'
+            }), 400
+            
+        results = []
+        
+        for url in urls:
+            try:
+                if not url.startswith(('http://', 'https://')):
+                    url = 'https://' + url
+                
+                response = requests.get(
+                    url.strip(), 
+                    headers={'User-Agent': USER_AGENT}, 
+                    verify=False, 
+                    timeout=API_TIMEOUT
+                )
+                soup = BeautifulSoup(response.text, 'html.parser')
+                headings = [
+                    {'type': tag.name.upper(), 'text': tag.get_text().strip()}
+                    for tag in soup.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6'])
+                    if tag.get_text().strip()
+                ]
+                
+                results.append({
+                    'url': url,
+                    'status': 'success',
+                    'headings': headings
+                })
+            except Exception as e:
+                results.append({
+                    'url': url,
+                    'status': 'error',
+                    'error': str(e)
+                })
+                
+        return jsonify({
+            'status': 'success',
+            'results': results
+        })
+    except Exception as e:
+        return jsonify({
+            'error': str(e),
+            'status': 'error'
+        }), 500
+
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000))) 
+    port = int(os.getenv('PORT', 5000))
+    host = os.getenv('HOST', '0.0.0.0')
+    app.run(host=host, port=port) 
